@@ -32,6 +32,31 @@ def status():
         connected = {r: len(cs) for r, cs in rooms.items() if cs}
     return jsonify({"ok": True, "rooms": connected})
 
+# Watch posts here — plain HTTP, no SSL needed from watch side
+# Cloudflare handles SSL termination so this works fine
+@app.route("/cmd", methods=["GET", "POST"])
+def cmd():
+    # Support both GET (easier for ESP8266) and POST
+    if request.method == "GET":
+        room   = request.args.get("room", "default")
+        action = request.args.get("action", "toggle")
+    else:
+        data   = request.get_json(silent=True) or {}
+        room   = str(data.get("room", "default"))
+        action = str(data.get("action", "toggle"))
+
+    with rooms_lock:
+        clients = list(rooms.get(room, []))
+    sent = 0
+    for c in clients:
+        try:
+            c.push(json.dumps({"action": action}))
+            sent += 1
+        except Exception:
+            pass
+    return jsonify({"ok": True, "sent": sent})
+
+# Keep old /command for compatibility
 @app.route("/command", methods=["POST"])
 def command():
     data   = request.get_json(silent=True) or {}
